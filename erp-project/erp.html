@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>US Equity Risk Premium — S&amp;P 500 Forward Earnings Yield less 10-Year Treasury</title>
+<style>
+  :root {
+    --ink: #111;
+    --grid: #d8d8d8;
+    --muted: #6b6b6b;
+    --zero: #e01b24;
+    --panel: #fff;
+    --edge: #e2e2e2;
+    --accent: #1a4f8a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #f4f4f2;
+    color: var(--ink);
+    font: 14px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
+
+  /* ---------- site layout: chart column + sibling-chart sidebar ---------- */
+  .layout { display: flex; gap: 22px; align-items: flex-start; }
+  .layout .main { flex: 1; min-width: 0; }
+  .nav-banner {
+    width: 236px; flex-shrink: 0;
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+    padding: 16px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .nav-banner h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--accent); margin: 0 0 9px; font-weight: 700;
+  }
+  .nav-banner h3 + a { margin-top: 0; }
+  .nav-banner a {
+    display: block; font-size: 12.5px; color: #33415a; text-decoration: none;
+    padding: 6px 9px; margin-bottom: 3px; border-radius: 3px;
+    border-left: 3px solid transparent;
+  }
+  .nav-banner a:hover { background: #eef2f7; color: #0f1d33; }
+  .nav-banner a.active {
+    background: #eaf1fa; color: #0f1d33; font-weight: 600;
+    border-left-color: var(--accent);
+  }
+  @media (max-width: 900px) {
+    .layout { flex-direction: column; }
+    .nav-banner { width: 100%; order: 2; }
+    .layout .main { order: 1; width: 100%; }
+  }
+
+  /* ---------- chart card: styled after the Bloomberg reference ---------- */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    padding: 22px 26px 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  h1 {
+    font-size: 21px;
+    font-weight: 700;
+    margin: 0 0 3px;
+    letter-spacing: -.2px;
+  }
+  .sub { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 18px;
+    font-size: 12px; margin: 0 0 6px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .key { width: 22px; height: 0; border-top: 2px solid var(--ink); display: inline-block; }
+  .key.dash  { border-top-style: dashed; border-color: var(--zero); }
+  .key.light { border-top-color: #9aa7b4; }
+  .key.dot   { border-top-style: dotted; border-color: #6f7d8c; }
+
+  .plot-wrap { position: relative; }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+
+  #tip {
+    position: absolute; pointer-events: none; opacity: 0;
+    transform: translate(-50%, -100%); transition: opacity .08s;
+    background: rgba(17,17,17,.93); color: #fff; border-radius: 4px;
+    padding: 7px 9px; font-size: 12px; line-height: 1.45; white-space: nowrap;
+    z-index: 5;
+  }
+  #tip b { font-weight: 600; }
+  #tip .r { color: #ff9d9d; }
+
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    align-items: center; justify-content: space-between;
+    margin: 4px 0 14px;
+  }
+  .ranges { display: flex; flex-wrap: wrap; gap: 6px; }
+  button {
+    font: inherit; font-size: 12px; padding: 5px 11px;
+    background: #fff; color: #333; cursor: pointer;
+    border: 1px solid #ccc; border-radius: 3px;
+  }
+  button:hover { background: #f0f0f0; }
+  button[aria-pressed="true"] {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .source { font-size: 11.5px; color: var(--muted); margin-top: 10px; }
+
+  /* ---------- stats + methodology ---------- */
+  .grid {
+    display: grid; gap: 14px; margin-top: 22px;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  }
+  .stat {
+    background: #fff; border: 1px solid var(--edge);
+    border-radius: 4px; padding: 12px 14px;
+  }
+  .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .stat .v { font-size: 21px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .stat .n { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .neg { color: #c0161d; }
+  .pos { color: #17683a; }
+
+  details {
+    margin-top: 22px; background: #fff;
+    border: 1px solid var(--edge); border-radius: 4px; padding: 14px 18px;
+  }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  details h3 { font-size: 13px; margin: 18px 0 6px; }
+  details p, details li { font-size: 13px; color: #333; }
+  details code {
+    background: #f3f3f1; padding: 1px 5px; border-radius: 3px;
+    font-size: 12.5px;
+  }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 12.5px; }
+  th, td { border: 1px solid #e4e4e4; padding: 5px 9px; text-align: left; }
+  th { background: #f7f7f5; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .warn {
+    background: #fff8e6; border: 1px solid #f0dca8;
+    padding: 9px 12px; border-radius: 4px; font-size: 12.5px; margin-top: 12px;
+  }
+  #err {
+    display: none; background: #fdecea; border: 1px solid #f5c2c0;
+    color: #8c1b16; padding: 11px 14px; border-radius: 4px; margin-bottom: 14px;
+    font-size: 13px;
+  }
+  @media (max-width: 620px) {
+    .page { padding: 14px 10px 40px; }
+    .card { padding: 15px 13px 13px; }
+    h1 { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+<div class="layout">
+  <div class="main">
+  <div id="err"></div>
+
+  <div class="card">
+    <h1>US Equity Risk Premium</h1>
+    <p class="sub">S&amp;P 500 forward earnings yield less the 10-year Treasury yield</p>
+
+    <div class="legend">
+      <span><i class="key"></i>Point-in-time consensus</span>
+      <span><i class="key light"></i>Backcast (pre-2013)</span>
+      <span><i class="key dot"></i>Extrapolated</span>
+      <span><i class="key dash"></i>Zero premium</span>
+    </div>
+
+    <div class="toolbar">
+      <div class="ranges" id="ranges"></div>
+      <div class="hint">Drag to pan · scroll or pinch to zoom · double-click to reset</div>
+    </div>
+
+    <div class="plot-wrap">
+      <canvas id="chart" aria-label="Equity risk premium chart"></canvas>
+      <div id="tip"></div>
+    </div>
+
+    <p class="source" id="src"></p>
+  </div>
+
+  <div class="grid" id="stats"></div>
+
+  <details id="method">
+    <summary>Methodology, data sources &amp; validation</summary>
+    <div id="methodBody"></div>
+  </details>
+  </div>
+
+  <nav class="nav-banner">
+    <h3>Nasdaq-100</h3>
+    <a href="nq100gap.html">Overnight Gap Scanner</a>
+    <h3 style="margin-top:18px;">S&amp;P 500 Charts</h3>
+    <a href="CAPE.HTML">Shiller CAPE Ratio</a>
+    <a href="trailingeps.html">Trailing 12-Month EPS</a>
+    <a href="fwdpe.html">Forward P/E</a>
+    <a href="margin-m2.html">Margin Debt as a % of M2</a>
+    <a href="yoymargindebt.html">YoY Change in Margin Debt</a>
+    <a href="concentration.html">Market Concentration</a>
+    <a href="leveraged_spread.html">Leveraged ETF Spread</a>
+    <a href="equity_positioning.html">Equity Positioning (Public Reconstruction)</a>
+    <a href="cta_positioning.html">CTA Positioning (US Equities)</a>
+    <a href="10yearallocation.html">Household Equity Allocation vs 10-Yr Return</a>
+    <a href="binaryacc.html">Binary Accumulation</a>
+    <a href="spy_deep_skew.html">SPY vs. DEEP SKEW</a>
+    <a href="erp.html" class="active">Equity Risk Premium</a>
+    <h3 style="margin-top:18px;">Gold</h3>
+    <a href="gld_flows.html">GLD Price &amp; Net Flows</a>
+    <a href="goldcomposite.html">Gold Composite Valuation</a>
+  </nav>
+</div>
+</div>
+
+<script>
+"use strict";
+
+/* ==================================================================
+   Equity risk premium chart.
+
+   Rendered on a raw canvas rather than a charting library: the target
+   look (Bloomberg / Daily Shot style) needs a hairline jagged daily
+   line with no smoothing, a right-hand axis, and segment-aware
+   styling that marks reconstructed stretches differently. Hand-drawing
+   is less code than fighting a library's defaults, and it keeps the
+   ~9k-point series responsive while panning.
+   ================================================================== */
+
+const CFG = {
+  dataUrl: "erp-data.json",
+  pad: { top: 18, right: 62, bottom: 30, left: 14 },
+  colors: {
+    consensus: "#111",
+    backcast: "#9aa7b4",
+    extrapolated: "#6f7d8c",
+    grid: "#d8d8d8",
+    zero: "#e01b24",
+    axis: "#555",
+  },
+};
+
+const state = {
+  rows: [],
+  meta: null,
+  view: { i0: 0, i1: 0 },   // visible index window
+  hover: -1,
+  dpr: 1,
+  geom: null,
+};
+
+const canvas = document.getElementById("chart");
+const ctx = canvas.getContext("2d");
+const tip = document.getElementById("tip");
+
+/* ---------------------------- helpers ---------------------------- */
+const fmtBps = (v) => (v >= 0 ? "+" : "") + v.toFixed(0) + " bps";
+const fmtPct = (v) => v.toFixed(2) + "%";
+
+function parseDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+function niceStep(span, target) {
+  const raw = span / target;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const mult of [1, 2, 2.5, 5, 10]) {
+    if (mag * mult >= raw) return mag * mult;
+  }
+  return mag * 10;
+}
+
+/* --------------------------- rendering --------------------------- */
+function resize() {
+  const cssWidth = canvas.parentElement.clientWidth;
+  const cssHeight = Math.max(340, Math.min(560, Math.round(cssWidth * 0.52)));
+  state.dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(cssWidth * state.dpr);
+  canvas.height = Math.round(cssHeight * state.dpr);
+  canvas.style.height = cssHeight + "px";
+  draw();
+}
+
+function visibleRows() {
+  return state.rows.slice(state.view.i0, state.view.i1 + 1);
+}
+
+function computeGeometry(rows) {
+  const w = canvas.width / state.dpr;
+  const h = canvas.height / state.dpr;
+  const { pad } = CFG;
+  const plot = {
+    x0: pad.left,
+    x1: w - pad.right,
+    y0: pad.top,
+    y1: h - pad.bottom,
+  };
+
+  let lo = Infinity, hi = -Infinity;
+  for (const r of rows) {
+    if (r.erp < lo) lo = r.erp;
+    if (r.erp > hi) hi = r.erp;
+  }
+  if (!isFinite(lo)) { lo = -100; hi = 100; }
+  // Always show the zero line: it is the whole point of the chart.
+  lo = Math.min(lo, 0);
+  hi = Math.max(hi, 0);
+  const padY = Math.max(20, (hi - lo) * 0.08);
+  lo -= padY; hi += padY;
+
+  const step = niceStep(hi - lo, 8);
+  lo = Math.floor(lo / step) * step;
+  hi = Math.ceil(hi / step) * step;
+
+  return {
+    plot, lo, hi, step, w, h,
+    x: (i) => plot.x0 + (rows.length <= 1 ? 0 : (i / (rows.length - 1)) * (plot.x1 - plot.x0)),
+    y: (v) => plot.y1 - ((v - lo) / (hi - lo)) * (plot.y1 - plot.y0),
+  };
+}
+
+function drawGrid(g, rows) {
+  const { plot } = g;
+  ctx.save();
+  ctx.font = "11px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+  ctx.strokeStyle = CFG.colors.grid;
+  ctx.fillStyle = CFG.colors.axis;
+  ctx.lineWidth = 1;
+
+  // horizontal gridlines + right-hand axis labels (basis points)
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  for (let v = g.lo; v <= g.hi + 1e-9; v += g.step) {
+    const y = Math.round(g.y(v)) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(plot.x0, y);
+    ctx.lineTo(plot.x1, y);
+    ctx.stroke();
+    ctx.fillText(v.toFixed(0), plot.x1 + 8, y);
+  }
+
+  // year gridlines: pick a spacing that avoids crowding
+  const firstYear = parseDate(rows[0].d).getUTCFullYear();
+  const lastYear = parseDate(rows[rows.length - 1].d).getUTCFullYear();
+  const years = lastYear - firstYear;
+  const stride = years > 40 ? 5 : years > 20 ? 4 : years > 10 ? 2 : 1;
+
+  // index of the first row in each year, for x placement
+  const yearIndex = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    const y = parseDate(rows[i].d).getUTCFullYear();
+    if (!yearIndex.has(y)) yearIndex.set(y, i);
+  }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.setLineDash([2, 3]);
+  for (const [year, idx] of yearIndex) {
+    if (year % stride !== 0) continue;
+    const x = Math.round(g.x(idx)) + 0.5;
+    if (x < plot.x0 || x > plot.x1) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, plot.y0);
+    ctx.lineTo(x, plot.y1);
+    ctx.stroke();
+    ctx.fillText(String(year), x, plot.y1 + 7);
+  }
+  ctx.setLineDash([]);
+
+  // axis frame
+  ctx.strokeStyle = "#9a9a9a";
+  ctx.beginPath();
+  ctx.moveTo(plot.x0, plot.y1 + 0.5);
+  ctx.lineTo(plot.x1, plot.y1 + 0.5);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // right-hand axis title
+  ctx.save();
+  ctx.translate(g.w - 10, (plot.y0 + plot.y1) / 2);
+  ctx.rotate(Math.PI / 2);
+  ctx.textAlign = "center";
+  ctx.fillStyle = CFG.colors.axis;
+  ctx.font = "11px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+  ctx.fillText("Basis points", 0, 0);
+  ctx.restore();
+}
+
+function drawZero(g) {
+  const y = Math.round(g.y(0)) + 0.5;
+  ctx.save();
+  ctx.strokeStyle = CFG.colors.zero;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(g.plot.x0, y);
+  ctx.lineTo(g.plot.x1, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* Draw the series as runs of constant basis so reconstructed stretches
+   are visually distinct from real point-in-time consensus. */
+function drawSeries(g, rows) {
+  const styleFor = (basis) => {
+    if (basis === "c") return { color: CFG.colors.consensus, width: 1.15, dash: [] };
+    if (basis === "b") return { color: CFG.colors.backcast, width: 1.05, dash: [] };
+    return { color: CFG.colors.extrapolated, width: 1.05, dash: [3, 2] };
+  };
+
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "butt";
+
+  let start = 0;
+  while (start < rows.length) {
+    const basis = rows[start].b;
+    let end = start;
+    while (end + 1 < rows.length && rows[end + 1].b === basis) end++;
+    const s = styleFor(basis);
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.width;
+    ctx.setLineDash(s.dash);
+    ctx.beginPath();
+    // include one point before the run so segments connect seamlessly
+    const from = Math.max(0, start - 1);
+    for (let i = from; i <= end; i++) {
+      const x = g.x(i), y = g.y(rows[i].erp);
+      if (i === from) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    start = end + 1;
+  }
+  ctx.setLineDash([]);
+
+  // latest-value marker, as in the Daily Shot reference
+  const last = rows.length - 1;
+  if (last >= 0) {
+    ctx.fillStyle = CFG.colors.zero;
+    ctx.beginPath();
+    ctx.arc(g.x(last), g.y(rows[last].erp), 3.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawHover(g, rows) {
+  const i = state.hover;
+  if (i < 0 || i >= rows.length) { tip.style.opacity = 0; return; }
+  const r = rows[i];
+  const x = g.x(i), y = g.y(r.erp);
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(0,0,0,.35)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(Math.round(x) + 0.5, g.plot.y0);
+  ctx.lineTo(Math.round(x) + 0.5, g.plot.y1);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#111";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(x, y, 3.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  const label = { c: "consensus", b: "backcast", e: "extrapolated" }[r.b] || r.b;
+  tip.innerHTML =
+    `<b>${r.d}</b><br>` +
+    `ERP <b>${fmtBps(r.erp)}</b><br>` +
+    `Fwd earnings yield ${fmtPct(r.ey)}<br>` +
+    `<span class="r">10y Treasury ${fmtPct(r.y10)}</span><br>` +
+    `Fwd P/E ${r.pe.toFixed(1)} · ${label}`;
+  const wrapW = canvas.parentElement.clientWidth;
+  tip.style.left = Math.max(70, Math.min(wrapW - 70, x)) + "px";
+  tip.style.top = Math.max(52, y - 12) + "px";
+  tip.style.opacity = 1;
+}
+
+function draw() {
+  const rows = visibleRows();
+  ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width / state.dpr, canvas.height / state.dpr);
+  if (!rows.length) return;
+  const g = computeGeometry(rows);
+  state.geom = g;
+  drawGrid(g, rows);
+  drawZero(g);
+  drawSeries(g, rows);
+  drawHover(g, rows);
+}
+
+/* --------------------------- interaction -------------------------- */
+function setView(i0, i1) {
+  const n = state.rows.length;
+  const minSpan = 20;
+  i0 = Math.max(0, Math.round(i0));
+  i1 = Math.min(n - 1, Math.round(i1));
+  if (i1 - i0 < minSpan) {
+    const mid = (i0 + i1) / 2;
+    i0 = Math.max(0, Math.round(mid - minSpan / 2));
+    i1 = Math.min(n - 1, i0 + minSpan);
+  }
+  state.view = { i0, i1 };
+  draw();
+}
+
+function indexFromX(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  const g = state.geom;
+  if (!g) return -1;
+  const rows = visibleRows();
+  const px = clientX - rect.left;
+  const t = (px - g.plot.x0) / (g.plot.x1 - g.plot.x0);
+  return Math.max(0, Math.min(rows.length - 1, Math.round(t * (rows.length - 1))));
+}
+
+function attachInteraction() {
+  let dragging = false, lastX = 0, moved = false;
+
+  canvas.addEventListener("pointerdown", (e) => {
+    dragging = true; moved = false; lastX = e.clientX;
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener("pointermove", (e) => {
+    if (dragging) {
+      const rect = canvas.getBoundingClientRect();
+      const rows = state.view.i1 - state.view.i0;
+      const dx = e.clientX - lastX;
+      if (Math.abs(dx) < 1) return;
+      moved = true;
+      const shift = -(dx / rect.width) * rows;
+      let i0 = state.view.i0 + shift, i1 = state.view.i1 + shift;
+      if (i0 < 0) { i1 -= i0; i0 = 0; }
+      if (i1 > state.rows.length - 1) {
+        const over = i1 - (state.rows.length - 1);
+        i1 -= over; i0 -= over;
+      }
+      lastX = e.clientX;
+      setView(i0, i1);
+    } else {
+      state.hover = indexFromX(e.clientX);
+      draw();
+    }
+  });
+
+  const endDrag = (e) => {
+    dragging = false;
+    if (e.pointerId !== undefined && canvas.hasPointerCapture?.(e.pointerId)) {
+      canvas.releasePointerCapture(e.pointerId);
+    }
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+
+  canvas.addEventListener("pointerleave", () => {
+    state.hover = -1; tip.style.opacity = 0; draw();
+  });
+
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const anchor = (e.clientX - rect.left) / rect.width;
+    const { i0, i1 } = state.view;
+    const span = i1 - i0;
+    const factor = e.deltaY > 0 ? 1.18 : 1 / 1.18;
+    const newSpan = span * factor;
+    const pivot = i0 + anchor * span;
+    setView(pivot - anchor * newSpan, pivot + (1 - anchor) * newSpan);
+  }, { passive: false });
+
+  canvas.addEventListener("dblclick", () => applyRange("all"));
+  window.addEventListener("resize", resize);
+}
+
+/* ----------------------------- ranges ----------------------------- */
+const RANGES = [
+  { key: "all", label: "All" },
+  { key: "25y", label: "25Y", years: 25 },
+  { key: "20y", label: "20Y", years: 20 },
+  { key: "10y", label: "10Y", years: 10 },
+  { key: "5y",  label: "5Y",  years: 5 },
+  { key: "1y",  label: "1Y",  years: 1 },
+];
+
+function applyRange(key) {
+  const rows = state.rows;
+  const spec = RANGES.find((r) => r.key === key) || RANGES[0];
+  if (!spec.years) {
+    setView(0, rows.length - 1);
+  } else {
+    const end = parseDate(rows[rows.length - 1].d);
+    const cutoff = Date.UTC(end.getUTCFullYear() - spec.years, end.getUTCMonth(), end.getUTCDate());
+    let i0 = 0;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (parseDate(rows[i].d).getTime() < cutoff) { i0 = i; break; }
+    }
+    setView(i0, rows.length - 1);
+  }
+  for (const btn of document.querySelectorAll("#ranges button")) {
+    btn.setAttribute("aria-pressed", String(btn.dataset.key === key));
+  }
+}
+
+function buildRangeButtons() {
+  const host = document.getElementById("ranges");
+  for (const r of RANGES) {
+    const b = document.createElement("button");
+    b.textContent = r.label;
+    b.dataset.key = r.key;
+    b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => applyRange(r.key));
+    host.appendChild(b);
+  }
+}
+
+/* ------------------------------ stats ----------------------------- */
+function percentile(sorted, value) {
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] < value) lo = mid + 1; else hi = mid;
+  }
+  return (lo / sorted.length) * 100;
+}
+
+function renderStats() {
+  const rows = state.rows, m = state.meta;
+  const last = rows[rows.length - 1];
+  const sorted = rows.map((r) => r.erp).sort((a, b) => a - b);
+  const pct = percentile(sorted, last.erp);
+  const cls = last.erp < 0 ? "neg" : "pos";
+
+  const cards = [
+    { k: "Current premium", v: fmtBps(last.erp), n: `as of ${last.d}`, cls },
+    { k: "Fwd earnings yield", v: fmtPct(last.ey), n: `forward P/E ${last.pe.toFixed(1)}` },
+    { k: "10-year Treasury", v: fmtPct(last.y10), n: "US Treasury par curve" },
+    { k: "Percentile", v: pct.toFixed(0) + "th", n: `since ${m.first}` },
+    { k: "Historical median", v: fmtBps(m.median_bps), n: `${rows.length.toLocaleString()} observations` },
+    { k: "Range", v: `${m.min_bps.toFixed(0)} to ${m.max_bps.toFixed(0)}`, n: "basis points" },
+  ];
+
+  document.getElementById("stats").innerHTML = cards.map((c) => `
+    <div class="stat">
+      <div class="k">${c.k}</div>
+      <div class="v ${c.cls || ""}">${c.v}</div>
+      <div class="n">${c.n}</div>
+    </div>`).join("");
+}
+
+function renderMethodology() {
+  const m = state.meta;
+  const total = state.rows.length;
+  const pctOf = (n) => ((n / total) * 100).toFixed(0) + "%";
+  const c = m.counts || {};
+
+  document.getElementById("methodBody").innerHTML = `
+    <p>The equity risk premium here is the classic "Fed model" spread: what
+    equities yield on expected earnings, minus the risk-free rate.</p>
+    <p><code>${m.formula}</code></p>
+
+    <h3>Why point-in-time data matters</h3>
+    <p>A forward earnings yield must use the consensus that existed
+    <em>on that day</em>. Using today's revised earnings to draw a historical
+    chart injects look-ahead bias and systematically distorts every turning
+    point — earnings collapses look anticipated when in fact they surprised
+    everyone. This series therefore reads
+    <strong>${m.vintage_count} archived point-in-time snapshots</strong> of the
+    official S&amp;P Dow Jones Indices earnings workbook
+    (${m.vintage_range[0]} to ${m.vintage_range[1]}). For any given date, only
+    the snapshot published on or before it is used.</p>
+
+    <h3>Forward 12-month EPS</h3>
+    <p>${m.forward_eps_method} Weighting quarters by their true calendar
+    overlap with the next 365 days — rather than simply adding "the next four
+    quarters" — removes the artificial sawtooth that a discrete
+    quarter-counting rule stamps onto the series every quarter-end.</p>
+
+    <h3>Data sources</h3>
+    <table>
+      <tr><th>Input</th><th>Source</th></tr>
+      <tr><td>Consensus quarterly EPS</td><td>${m.consensus_source}</td></tr>
+      <tr><td>10-year Treasury yield</td><td>${m.treasury_source}</td></tr>
+      <tr><td>S&amp;P 500 price</td><td>${m.price_source}</td></tr>
+    </table>
+
+    <h3>Series composition</h3>
+    <table>
+      <tr><th>Basis</th><th>Meaning</th><th class="num">Days</th><th class="num">Share</th></tr>
+      <tr><td>Consensus</td><td>${m.segments.c}</td>
+          <td class="num">${(c.c || 0).toLocaleString()}</td><td class="num">${pctOf(c.c || 0)}</td></tr>
+      <tr><td>Backcast</td><td>${m.segments.b}</td>
+          <td class="num">${(c.b || 0).toLocaleString()}</td><td class="num">${pctOf(c.b || 0)}</td></tr>
+      <tr><td>Extrapolated</td><td>${m.segments.e}</td>
+          <td class="num">${(c.e || 0).toLocaleString()}</td><td class="num">${pctOf(c.e || 0)}</td></tr>
+    </table>
+
+    <h3>Honest limitations</h3>
+    <ul>
+      <li>Archived snapshots begin in 2013. Earlier dates are a
+      <em>backcast</em>: trailing EPS that had actually been published by that
+      date (a ${m.publication_lag_days}-day reporting lag is enforced), scaled
+      by a forward multiple of <strong>${m.backcast_forward_multiple}</strong>
+      fitted on the consensus era (sd ${m.backcast_multiple_sd}). It reproduces
+      the level and shape of the premium, but is not literal analyst data.</li>
+      <li>S&amp;P discontinued the workbook in early 2026, so the most recent
+      stretch carries the final vintage's estimates forward at their own
+      implied growth (${(m.tail_growth_yoy * 100).toFixed(1)}% y/y). Prices and
+      yields remain live and daily.</li>
+      <li>Bloomberg and The Daily Shot use LSEG/IBES or FactSet consensus
+      rather than S&amp;P's bottom-up figures, so levels differ modestly.
+      This is an independent public reconstruction, not their proprietary
+      series.</li>
+    </ul>
+    <div class="warn"><strong>Reading the chart:</strong> a negative premium
+    means investors accept a lower expected earnings yield on stocks than the
+    government pays on ten-year debt — historically an expensive market.</div>`;
+}
+
+/* ------------------------------ boot ------------------------------ */
+async function boot() {
+  try {
+    const res = await fetch(CFG.dataUrl, { cache: "no-cache" });
+    if (!res.ok) throw new Error(`${CFG.dataUrl} -> HTTP ${res.status}`);
+    const payload = await res.json();
+    if (!payload.rows || !payload.rows.length) throw new Error("no rows in dataset");
+
+    state.rows = payload.rows;
+    state.meta = payload.meta;
+
+    document.getElementById("src").textContent =
+      `${payload.meta.label} · ${state.rows.length.toLocaleString()} daily observations, ` +
+      `${payload.meta.first} to ${payload.meta.last} · built ${payload.generated_utc}`;
+
+    buildRangeButtons();
+    attachInteraction();
+    setView(0, state.rows.length - 1);
+    applyRange("all");
+    resize();
+    renderStats();
+    renderMethodology();
+  } catch (err) {
+    const box = document.getElementById("err");
+    box.style.display = "block";
+    box.textContent = "Could not load the dataset: " + err.message;
+    console.error(err);
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
