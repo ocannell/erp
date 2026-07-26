@@ -1,0 +1,4 @@
+# Cached upstream pulls: large, regenerable via pipeline/fetch_*.py
+data/raw/
+__pycache__/
+*.pyc
